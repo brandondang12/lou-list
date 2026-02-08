@@ -20,6 +20,8 @@
       --personal: #e87461;
       --creative: #c084fc;
       --relational: #f59e0b;
+      --health: #10b981;
+      --urgent: #ef4444;
       --border: rgba(255,255,255,0.06);
       --radius: 12px;
     }
@@ -93,6 +95,7 @@
       margin: 24px 0 12px 4px;
     }
     .section-label:first-child { margin-top: 8px; }
+    .section-label.urgent { color: var(--urgent); }
 
     .task-card {
       background: var(--card);
@@ -109,6 +112,7 @@
     .task-card:hover { background: var(--card-hover); transform: translateY(-1px); }
     .task-card.completed { opacity: 0.5; }
     .task-card.completed .task-text { text-decoration: line-through; }
+    .task-card.urgent-card { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.05); }
 
     .checkbox {
       width: 22px;
@@ -135,6 +139,7 @@
 
     .task-body { flex: 1; min-width: 0; }
     .task-text { font-size: 14px; line-height: 1.4; }
+    .task-due { font-size: 11px; color: var(--urgent); margin-top: 4px; font-weight: 600; }
     
     .task-meta {
       display: flex;
@@ -154,6 +159,7 @@
     .tag.personal { background: rgba(232,116,97,0.15); color: var(--personal); }
     .tag.creative { background: rgba(192,132,252,0.15); color: var(--creative); }
     .tag.relational { background: rgba(245,158,11,0.15); color: var(--relational); }
+    .tag.health { background: rgba(16,185,129,0.15); color: var(--health); }
 
     .empty-state {
       text-align: center;
@@ -297,6 +303,7 @@
       <select id="taskCategory">
         <option value="work">💼 Work</option>
         <option value="personal">🧘 Personal</option>
+        <option value="health">💚 Health</option>
         <option value="creative">🎨 Creative</option>
         <option value="relational">💛 Relational</option>
       </select>
@@ -314,12 +321,21 @@
 
 <script>
 const STORAGE_KEY = 'lou-list-tasks';
-const DATA_VERSION = 2; // Lou increments this on every deploy
+const DATA_VERSION = 3; // Lou increments this on every sync
 
 const SERVER_TASKS = [
-  // This Week
-  { id: 1, text: "Meet with Arjun re: responsibility handoff", cat: "work", zone: "focus", done: false, created: "2026-02-04" },
-  { id: 2, text: "Continue Rosebud onboarding & learning systems", cat: "work", zone: "focus", done: false, created: "2026-02-04" },
+  // This Week - Urgent (Camping Fri 2/14)
+  { id: 100, text: "Order cold weather gear for camping", cat: "personal", zone: "focus", done: false, created: "2026-02-08", due: "Tue 2/11", urgent: true },
+  { id: 101, text: "Organize camping meals", cat: "personal", zone: "focus", done: false, created: "2026-02-08", due: "Wed 2/12", urgent: true },
+  // This Week - Health
+  { id: 102, text: "Take prescription", cat: "health", zone: "focus", done: false, created: "2026-02-08", due: "TODAY", urgent: true },
+  { id: 103, text: "Order prescription refill", cat: "health", zone: "focus", done: false, created: "2026-02-08", due: "TODAY", urgent: true },
+  { id: 104, text: "Decide on health insurance", cat: "health", zone: "focus", done: false, created: "2026-02-08" },
+  // This Week - Work
+  { id: 105, text: "Paid ads initiative prep — 45-60 min brainstorm before Monday", cat: "work", zone: "focus", done: false, created: "2026-02-08" },
+  // Active
+  { id: 1, text: "Meet with Arjun re: responsibility handoff", cat: "work", zone: "active", done: false, created: "2026-02-04" },
+  { id: 2, text: "Continue Rosebud onboarding & learning systems", cat: "work", zone: "active", done: false, created: "2026-02-04" },
   // Growing
   { id: 10, text: "Build personal brand as part of Rosebud role", cat: "work", zone: "growing", done: false, created: "2026-02-04" },
   { id: 11, text: "Develop content creation skills (video, animation, storytelling)", cat: "creative", zone: "growing", done: false, created: "2026-02-04" },
@@ -338,15 +354,12 @@ const SERVER_TASKS = [
   { id: 25, text: "Car registration", cat: "personal", zone: "someday", done: false, created: "2026-02-05" },
 ];
 
-// Merge: server tasks are source of truth, but preserve local "done" state
 function loadTasks() {
   const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
   const storedVersion = parseInt(localStorage.getItem('lou-list-version') || '0');
   if (!stored || storedVersion < DATA_VERSION) {
-    // New deploy — use server tasks but preserve done state from local
     const doneIds = new Set((stored || []).filter(t => t.done).map(t => t.id));
     const merged = SERVER_TASKS.map(t => ({...t, done: doneIds.has(t.id)}));
-    // Keep any locally-added tasks too
     const serverIds = new Set(SERVER_TASKS.map(t => t.id));
     const localOnly = (stored || []).filter(t => !serverIds.has(t.id));
     const tasks = [...merged, ...localOnly];
@@ -388,11 +401,14 @@ function toggleDone(id) {
 }
 
 function taskCard(task) {
+  const urgentClass = task.urgent ? 'urgent-card' : '';
+  const dueHtml = task.due ? `<div class="task-due">⏰ ${task.due}</div>` : '';
   return `
-    <div class="task-card ${task.done ? 'completed done-card' : ''}" onclick="toggleDone(${task.id})">
+    <div class="task-card ${task.done ? 'completed done-card' : ''} ${urgentClass}" onclick="toggleDone(${task.id})">
       <div class="checkbox ${task.done ? 'checked' : ''}"></div>
       <div class="task-body">
         <div class="task-text">${task.text}</div>
+        ${dueHtml}
         <div class="task-meta">
           <span class="tag ${task.cat}">${task.cat}</span>
         </div>
@@ -408,12 +424,12 @@ function render() {
   
   if (currentTab === 'focus') {
     const focusTasks = filtered.filter(t => !t.done);
-    const cats = ['work', 'personal', 'creative', 'relational'];
-    const catLabels = { work: '💼 Work', personal: '🧘 Personal', creative: '🎨 Creative', relational: '💛 Relational' };
+    const urgentTasks = focusTasks.filter(t => t.urgent);
+    const normalTasks = focusTasks.filter(t => !t.urgent);
     
     let html = `
       <div class="focus-banner">
-        <div class="week">Week of Feb 3, 2026</div>
+        <div class="week">Week of Feb 10, 2026</div>
         <div class="msg">Only what matters this week. Everything else is Lou's job.</div>
       </div>
     `;
@@ -426,8 +442,17 @@ function render() {
         </div>
       `;
     } else {
+      // Show urgent first
+      if (urgentTasks.length) {
+        html += `<div class="section-label urgent">🔥 Time-Sensitive</div>`;
+        html += urgentTasks.map(taskCard).join('');
+      }
+      
+      // Then by category
+      const cats = ['health', 'work', 'personal', 'creative', 'relational'];
+      const catLabels = { work: '💼 Work', personal: '🧘 Personal', creative: '🎨 Creative', relational: '💛 Relational', health: '💚 Health' };
       cats.forEach(cat => {
-        const catTasks = focusTasks.filter(t => t.cat === cat);
+        const catTasks = normalTasks.filter(t => t.cat === cat);
         if (catTasks.length) {
           html += `<div class="section-label">${catLabels[cat]}</div>`;
           html += catTasks.map(taskCard).join('');
@@ -457,8 +482,8 @@ function render() {
     }
 
   } else {
-    const cats = ['work', 'personal', 'creative', 'relational'];
-    const catLabels = { work: '💼 Work', personal: '🧘 Personal', creative: '🎨 Creative', relational: '💛 Relational' };
+    const cats = ['work', 'personal', 'health', 'creative', 'relational'];
+    const catLabels = { work: '💼 Work', personal: '🧘 Personal', creative: '🎨 Creative', relational: '💛 Relational', health: '💚 Health' };
     const activeTasks = filtered.filter(t => !t.done);
     
     if (activeTasks.length === 0) {

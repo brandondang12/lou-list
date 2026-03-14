@@ -372,7 +372,7 @@
       document.querySelector(`[data-index="${index}"]`).classList.add('active');
 
       try {
-        const response = await fetch(`/workspace/${file.name}`);
+        const response = await fetch(`./${file.name}`);
         if (!response.ok) throw new Error('File not found');
         
         const markdown = await response.text();
